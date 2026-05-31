@@ -13,24 +13,31 @@ CREATE TABLE cdb_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- cdb_categories: manually created by the moderator, scoped to a session
+-- cdb_categories: created by the moderator or AI organize, scoped to a session.
+-- representative_question_id and discussion_trigger_question_id are set by AI organize.
 CREATE TABLE cdb_categories (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id UUID NOT NULL REFERENCES cdb_sessions(id) ON DELETE CASCADE,
-  label      TEXT NOT NULL,
-  label_ja   TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id                    UUID NOT NULL REFERENCES cdb_sessions(id) ON DELETE CASCADE,
+  label                         TEXT NOT NULL,
+  label_ja                      TEXT,
+  representative_question_id    UUID REFERENCES cdb_questions(id) ON DELETE SET NULL,
+  discussion_trigger_question_id UUID REFERENCES cdb_questions(id) ON DELETE SET NULL,
+  created_at                    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Migration applied: ALTER TABLE cdb_categories
+--   ADD COLUMN representative_question_id     UUID REFERENCES cdb_questions(id) ON DELETE SET NULL,
+--   ADD COLUMN discussion_trigger_question_id  UUID REFERENCES cdb_questions(id) ON DELETE SET NULL;
 
--- cdb_questions: content is IMMUTABLE after insert.
+-- cdb_questions: content and context are IMMUTABLE after insert.
 -- Only category_id and parent_id may be updated (by the moderator).
--- Never update the content column — the application enforces this.
+-- Never update the content or context columns — the application enforces this.
 CREATE TABLE cdb_questions (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id          UUID NOT NULL REFERENCES cdb_sessions(id) ON DELETE CASCADE,
   category_id         UUID REFERENCES cdb_categories(id) ON DELETE SET NULL, -- NULL = Uncategorized
   parent_id           UUID REFERENCES cdb_questions(id) ON DELETE SET NULL,
   content             TEXT NOT NULL,        -- IMMUTABLE: never overwrite after creation
+  context             TEXT,                 -- IMMUTABLE: optional background/reason; added via migration
   author_name         TEXT NOT NULL,
   author_affiliation  TEXT NOT NULL,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()

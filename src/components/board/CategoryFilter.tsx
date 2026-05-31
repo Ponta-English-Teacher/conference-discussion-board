@@ -5,7 +5,7 @@ import { i18n } from '@/lib/i18n';
 
 interface Props {
   categories: Category[];
-  selected: string | null; // null = All
+  selected: string | null;
   lang: Lang;
   onChange: (categoryId: string | null) => void;
 }
@@ -13,26 +13,23 @@ interface Props {
 export default function CategoryFilter({ categories, selected, lang, onChange }: Props) {
   const t = i18n[lang].board;
 
+  const pill = (active: boolean) =>
+    active
+      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+      : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50';
+
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1.5">
       <button
         onClick={() => onChange(null)}
-        className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-          selected === null
-            ? 'bg-gray-800 text-white border-gray-800'
-            : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'
-        }`}
+        className={`text-xs px-3.5 py-1.5 rounded-full border font-medium transition-colors ${pill(selected === null)}`}
       >
         {t.filterAll}
       </button>
 
       <button
         onClick={() => onChange('uncategorized')}
-        className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-          selected === 'uncategorized'
-            ? 'bg-gray-800 text-white border-gray-800'
-            : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'
-        }`}
+        className={`text-xs px-3.5 py-1.5 rounded-full border font-medium transition-colors ${pill(selected === 'uncategorized')}`}
       >
         {t.uncategorized}
       </button>
@@ -41,11 +38,7 @@ export default function CategoryFilter({ categories, selected, lang, onChange }:
         <button
           key={cat.id}
           onClick={() => onChange(cat.id)}
-          className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-            selected === cat.id
-              ? 'bg-gray-800 text-white border-gray-800'
-              : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'
-          }`}
+          className={`text-xs px-3.5 py-1.5 rounded-full border font-medium transition-colors ${pill(selected === cat.id)}`}
         >
           {lang === 'ja' && cat.label_ja ? cat.label_ja : cat.label}
         </button>

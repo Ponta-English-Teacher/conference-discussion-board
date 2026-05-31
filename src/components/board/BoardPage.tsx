@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { getParticipant } from '@/lib/participant';
 import { useLanguage } from '@/lib/useLanguage';
 import type { Category, Question, Session, Participant } from '@/types';
 import EntryForm from '@/components/landing/EntryForm';
-import NoteGrid from '@/components/board/NoteGrid';
+import QuestionList from '@/components/board/QuestionList';
 import CategoryFilter from '@/components/board/CategoryFilter';
 import NewNoteForm from '@/components/board/NewNoteForm';
+import LiveFeed from '@/components/board/LiveFeed';
 
 interface Props {
   sessionId: string;
@@ -26,20 +27,20 @@ export default function BoardPage({ sessionId }: Props) {
   const [showNewForm, setShowNewForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sessionNotFound, setSessionNotFound] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check sessionStorage for an existing participant for this specific session
   useEffect(() => {
     setParticipant(getParticipant(sessionId));
   }, [sessionId]);
 
-  // Load this session by ID
+  // Load this session by ID — goes through the API route (service role key)
+  // so the anon Supabase client's permissions don't affect the result.
   useEffect(() => {
-    supabase
-      .from('cdb_sessions')
-      .select('*')
-      .eq('id', sessionId)
-      .single()
-      .then(({ data }) => {
+    fetch(`/api/sessions/${sessionId}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
         if (data) setSession(data as Session);
         else setSessionNotFound(true);
       });
@@ -102,6 +103,13 @@ export default function BoardPage({ sessionId }: Props) {
     setShowNewForm(true);
   }
 
+  function handleFeedSelect(questionId: string) {
+    document.getElementById(`note-${questionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    setHighlightId(questionId);
+    highlightTimer.current = setTimeout(() => setHighlightId(null), 1500);
+  }
+
   const filteredQuestions = questions.filter(q => {
     if (categoryFilter === null) return true;
     if (categoryFilter === 'uncategorized') return q.category_id === null;
@@ -138,23 +146,30 @@ export default function BoardPage({ sessionId }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-dvh flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <div>
-          <h1 className="font-semibold text-base">{sessionTitle}</h1>
-          <p className="text-xs text-gray-400">{participant.name} · {participant.affiliation}</p>
+      <header className="bg-white border-b border-slate-200/80 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="font-bold text-slate-800 text-base leading-tight">{sessionTitle}</h1>
+            <p className="text-xs text-slate-400 leading-tight">{participant.name} · {participant.affiliation}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={toggle}
-            className="text-sm text-gray-500 hover:text-gray-800 border border-gray-300 rounded px-3 py-1 transition-colors"
+            className="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-full px-3 py-1.5 hover:bg-slate-50 transition-colors"
           >
             {lang === 'en' ? '日本語' : 'English'}
           </button>
           <button
             onClick={() => { setBuildOnQuestion(null); setShowNewForm(true); }}
-            className="text-sm bg-gray-900 text-white rounded-lg px-4 py-2 hover:bg-gray-700 transition-colors"
+            className="text-sm bg-indigo-600 text-white rounded-xl px-4 py-2 hover:bg-indigo-500 transition-colors font-semibold shadow-sm"
           >
             + {t.board.addQuestion}
           </button>
@@ -162,7 +177,7 @@ export default function BoardPage({ sessionId }: Props) {
       </header>
 
       {/* Category filter bar */}
-      <div className="bg-white border-b border-gray-100 px-4 py-2 overflow-x-auto">
+      <div className="bg-white/80 border-b border-slate-100 px-4 py-2.5 overflow-x-auto">
         <CategoryFilter
           categories={categories}
           selected={categoryFilter}
@@ -171,22 +186,28 @@ export default function BoardPage({ sessionId }: Props) {
         />
       </div>
 
-      {/* Main content */}
-      <main className="flex-1 p-4">
-        {loading ? (
-          <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
-            {t.common.loading}
-          </div>
-        ) : (
-          <NoteGrid
-            questions={filteredQuestions}
-            voterId={participant.id}
-            lang={lang}
-            onBuildOn={handleBuildOn}
-            onVoteChange={handleVoteChange}
-          />
-        )}
-      </main>
+      {/* Main content + Live Feed sidebar */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        <main className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
+              {t.common.loading}
+            </div>
+          ) : (
+            <QuestionList
+              questions={filteredQuestions}
+              voterId={participant.id}
+              lang={lang}
+              highlightId={highlightId}
+              onBuildOn={handleBuildOn}
+              onVoteChange={handleVoteChange}
+            />
+          )}
+        </main>
+        <aside className="hidden md:flex w-64 shrink-0 flex-col overflow-hidden">
+          <LiveFeed questions={questions} lang={lang} onSelect={handleFeedSelect} />
+        </aside>
+      </div>
 
       {/* New note modal */}
       {showNewForm && (

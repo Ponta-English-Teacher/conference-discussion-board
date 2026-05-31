@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { translateText } from '@/lib/openai';
 
 // GET /api/sessions — list all sessions with question counts, newest first
 export async function GET() {
@@ -36,18 +37,47 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const { title, title_ja } = await req.json();
 
-  if (!title?.trim()) {
-    return NextResponse.json({ error: 'title is required' }, { status: 400 });
+  const hasEn = !!title?.trim();
+  const hasJa = !!title_ja?.trim();
+
+  if (!hasEn && !hasJa) {
+    return NextResponse.json(
+      { error: 'At least one title (EN or JA) is required' },
+      { status: 400 }
+    );
+  }
+
+  let finalTitle: string = title?.trim() || '';
+  let finalTitleJa: string | null = title_ja?.trim() || null;
+
+  if (hasEn && !hasJa) {
+    // Moderator entered EN only — try to generate JA
+    try {
+      finalTitleJa = await Promise.race([
+        translateText(finalTitle, 'en-to-ja'),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 5000)),
+      ]);
+    } catch {
+      finalTitleJa = null; // AI failed — leave blank, do not block creation
+    }
+  } else if (hasJa && !hasEn) {
+    // Moderator entered JA only — try to generate EN
+    // title is NOT NULL in the DB, so fall back to the JA text if AI fails
+    try {
+      const generated = await Promise.race([
+        translateText(finalTitleJa!, 'ja-to-en'),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 5000)),
+      ]);
+      finalTitle = generated ?? finalTitleJa!;
+    } catch {
+      finalTitle = finalTitleJa!;
+    }
   }
 
   const db = createServerClient();
   const { data, error } = await db
     .from('cdb_sessions')
-    .insert({
-      title: title.trim(),
-      title_ja: title_ja?.trim() || null,
-      is_active: true,
-    })
+    .insert({ title: finalTitle, title_ja: finalTitleJa, is_active: true })
     .select()
     .single();
 

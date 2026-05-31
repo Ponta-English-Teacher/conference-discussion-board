@@ -14,6 +14,8 @@ export interface Category {
   session_id: string;
   label: string;
   label_ja: string | null;
+  representative_question_id: string | null;
+  discussion_trigger_question_id: string | null;
 }
 
 export interface Participant {
@@ -23,13 +25,14 @@ export interface Participant {
   session_id: string; // which session this participant joined
 }
 
-// content is immutable after creation — category_id and parent_id are the only mutable fields
+// content and context are immutable after creation — category_id and parent_id are the only mutable fields
 export interface Question {
   id: string;
   session_id: string;
   category_id: string | null; // null = Uncategorized
   parent_id: string | null;
   content: string;            // never overwritten after insert
+  context: string | null;     // optional background/reason; never overwritten after insert
   author_name: string;
   author_affiliation: string;
   created_at: string;

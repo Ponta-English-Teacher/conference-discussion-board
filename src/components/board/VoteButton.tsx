@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import type { Lang } from '@/types';
-import { i18n } from '@/lib/i18n';
 
 interface Props {
   questionId: string;
@@ -15,7 +14,6 @@ interface Props {
 
 export default function VoteButton({ questionId, voteCount, votedByMe, voterId, lang, onVoteChange }: Props) {
   const [loading, setLoading] = useState(false);
-  const t = i18n[lang].board;
 
   async function handleVote() {
     if (loading) return;
@@ -39,15 +37,15 @@ export default function VoteButton({ questionId, voteCount, votedByMe, voterId, 
     <button
       onClick={handleVote}
       disabled={loading}
-      className={`flex items-center gap-1.5 text-sm rounded-full px-3 py-1 border transition-colors ${
+      title={lang === 'ja' ? '投票' : 'Vote'}
+      className={`inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5 border transition-all ${
         votedByMe
-          ? 'bg-gray-800 text-white border-gray-800'
-          : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'
+          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+          : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50'
       } disabled:opacity-50`}
     >
-      <span>{votedByMe ? '▲' : '△'}</span>
+      <span className="text-base leading-none">{votedByMe ? '▲' : '△'}</span>
       <span>{voteCount}</span>
-      <span className="sr-only">{t.votes}</span>
     </button>
   );
 }
