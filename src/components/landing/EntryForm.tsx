@@ -16,21 +16,31 @@ export default function EntryForm({ sessionId, sessionTitle, onEntered }: Props)
   const { lang, toggle, t } = useLanguage();
   const [name, setName] = useState('');
   const [affiliation, setAffiliation] = useState('');
+  const [email, setEmail] = useState('');
+  const [notifyChecked, setNotifyChecked] = useState(false);
   const [error, setError] = useState('');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim();
     const trimmedAffiliation = affiliation.trim();
+    const trimmedEmail = email.trim();
     if (!trimmedName || !trimmedAffiliation) {
       setError(t.landing.required);
       return;
     }
+    if (notifyChecked && !trimmedEmail) {
+      setError(t.landing.emailRequiredForNotify);
+      return;
+    }
+    const safeEmail = trimmedEmail || null;
     const participant: Participant = {
       id: uuidv4(),
       name: trimmedName,
       affiliation: trimmedAffiliation,
       session_id: sessionId,
+      email: safeEmail,
+      notify_on_response: notifyChecked && safeEmail !== null,
     };
     setParticipant(participant);
     onEntered(participant);
@@ -89,6 +99,37 @@ export default function EntryForm({ sessionId, sessionTitle, onEntered }: Props)
               className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
             />
           </div>
+
+          {/* Email — optional, only used for response notifications */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">
+              {t.landing.emailLabel}
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setError(''); }}
+              placeholder="name@example.com"
+              className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            />
+            <p className="text-xs text-slate-500 leading-relaxed">{t.landing.emailHint}</p>
+          </div>
+
+          {/* Notification opt-in checkbox */}
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={notifyChecked}
+              onChange={e => { setNotifyChecked(e.target.checked); setError(''); }}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400 shrink-0"
+            />
+            <span className="text-sm text-slate-700">{t.landing.notifyCheckbox}</span>
+          </label>
+
+          {/* Privacy notice — always visible */}
+          <p className="text-xs text-slate-400 leading-relaxed border-t border-slate-100 pt-3">
+            {t.landing.emailPrivacy}
+          </p>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
 

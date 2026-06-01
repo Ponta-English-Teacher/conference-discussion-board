@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { getParticipant } from '@/lib/participant';
 import { useLanguage } from '@/lib/useLanguage';
-import type { Category, Question, Session, Participant } from '@/types';
+import type { Category, Question, Response, Session, Participant } from '@/types';
 import EntryForm from '@/components/landing/EntryForm';
 import QuestionList from '@/components/board/QuestionList';
 import CategoryFilter from '@/components/board/CategoryFilter';
@@ -22,6 +22,7 @@ export default function BoardPage({ sessionId }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [responses, setResponses] = useState<Response[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [buildOnQuestion, setBuildOnQuestion] = useState<Question | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -59,13 +60,18 @@ export default function BoardPage({ sessionId }: Props) {
     if (res.ok) setCategories(await res.json());
   }, [sessionId]);
 
+  const fetchResponses = useCallback(async () => {
+    const res = await fetch(`/api/responses?session_id=${sessionId}`);
+    if (res.ok) setResponses(await res.json());
+  }, [sessionId]);
+
   // Initial data load (only once participant is known)
   useEffect(() => {
     if (!participant) return;
-    Promise.all([fetchQuestions(), fetchCategories()]).finally(() =>
+    Promise.all([fetchQuestions(), fetchCategories(), fetchResponses()]).finally(() =>
       setLoading(false)
     );
-  }, [participant, fetchQuestions, fetchCategories]);
+  }, [participant, fetchQuestions, fetchCategories, fetchResponses]);
 
   // Supabase Realtime subscriptions
   useEffect(() => {
@@ -78,9 +84,10 @@ export default function BoardPage({ sessionId }: Props) {
         fetchCategories();
         fetchQuestions();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cdb_responses' }, fetchResponses)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [sessionId, participant, fetchQuestions, fetchCategories]);
+  }, [sessionId, participant, fetchQuestions, fetchCategories, fetchResponses]);
 
   // Optimistic vote toggle
   function handleVoteChange(questionId: string, voted: boolean) {
@@ -109,6 +116,15 @@ export default function BoardPage({ sessionId }: Props) {
     setHighlightId(questionId);
     highlightTimer.current = setTimeout(() => setHighlightId(null), 1500);
   }
+
+  const responsesByQuestion = useMemo(() => {
+    const map = new Map<string, Response[]>();
+    for (const r of responses) {
+      if (!map.has(r.question_id)) map.set(r.question_id, []);
+      map.get(r.question_id)!.push(r);
+    }
+    return map;
+  }, [responses]);
 
   const filteredQuestions = questions.filter(q => {
     if (categoryFilter === null) return true;
@@ -201,6 +217,7 @@ export default function BoardPage({ sessionId }: Props) {
               highlightId={highlightId}
               onBuildOn={handleBuildOn}
               onVoteChange={handleVoteChange}
+              responsesByQuestion={responsesByQuestion}
             />
           )}
         </main>
@@ -221,6 +238,8 @@ export default function BoardPage({ sessionId }: Props) {
               : null
           }
           lang={lang}
+          notifyEmail={participant.email}
+          notifyOnResponse={participant.notify_on_response}
           onClose={() => { setShowNewForm(false); setBuildOnQuestion(null); }}
           onSubmitted={fetchQuestions}
         />

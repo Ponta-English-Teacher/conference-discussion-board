@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Question, Lang } from '@/types';
+import type { Question, Response, Lang } from '@/types';
 import CategoryBadge from './CategoryBadge';
 import { i18n } from '@/lib/i18n';
 
@@ -12,6 +12,31 @@ interface Props {
   highlighted: boolean;
   onBuildOn: (question: Question) => void;
   onVoteChange: (questionId: string, voted: boolean) => void;
+  responses: Response[];
+}
+
+function ResponseItem({ response, lang }: { response: Response; lang: Lang }) {
+  const primary = lang === 'ja'
+    ? (response.content_ja ?? response.content)
+    : (response.content_en ?? response.content);
+  const secondary = lang === 'ja' ? response.content_en : response.content_ja;
+
+  return (
+    <div className="pl-3 border-l-2 border-indigo-200 flex flex-col gap-0.5">
+      <p className="text-sm text-slate-700 leading-snug">{primary}</p>
+      {secondary && (
+        <p className="text-xs text-slate-400 leading-snug">
+          <span className="font-bold text-[10px] tracking-wide mr-1 text-slate-300">
+            {lang === 'en' ? 'JA' : 'EN'}
+          </span>
+          {secondary}
+        </p>
+      )}
+      <p className="text-xs text-slate-400 mt-0.5">
+        {response.author_name} · {response.author_affiliation} · {timeAgo(response.created_at, lang)}
+      </p>
+    </div>
+  );
 }
 
 const ACCENT_COLORS = [
@@ -34,7 +59,7 @@ function timeAgo(iso: string, lang: Lang): string {
 }
 
 export default function QuestionRow({
-  question, voterId, lang, highlighted, onBuildOn, onVoteChange,
+  question, voterId, lang, highlighted, onBuildOn, onVoteChange, responses,
 }: Props) {
   const t = i18n[lang].board;
   const [contextOpen, setContextOpen] = useState(false);
@@ -197,6 +222,21 @@ export default function QuestionRow({
               <p className="text-xs text-slate-400 leading-relaxed">{secondaryContext}</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Official responses from moderator/presenter — read-only for participants */}
+      {responses.length > 0 && (
+        <div
+          className="mx-5 mb-3 rounded-xl border border-slate-100 bg-slate-50/40 px-4 py-3 flex flex-col gap-3"
+          style={{ borderLeft: '3px solid #6366F1' }}
+        >
+          <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wide">
+            {lang === 'ja' ? '公式回答' : 'Official Response'}
+          </span>
+          {responses.map(r => (
+            <ResponseItem key={r.id} response={r} lang={lang} />
+          ))}
         </div>
       )}
     </div>

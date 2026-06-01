@@ -10,12 +10,16 @@ interface Props {
   authorAffiliation: string;
   parent: Pick<Question, 'id' | 'content' | 'author_name'> | null;
   lang: Lang;
+  notifyEmail: string | null;
+  notifyOnResponse: boolean;
   onClose: () => void;
   onSubmitted: () => void;
 }
 
 export default function NewNoteForm({
-  sessionId, authorName, authorAffiliation, parent, lang, onClose, onSubmitted,
+  sessionId, authorName, authorAffiliation, parent, lang,
+  notifyEmail, notifyOnResponse,
+  onClose, onSubmitted,
 }: Props) {
   const t = i18n[lang].board;
   const [content, setContent] = useState('');
@@ -42,6 +46,8 @@ export default function NewNoteForm({
           author_affiliation: authorAffiliation,
           parent_id: parent?.id ?? null,
           lang,
+          author_email: notifyEmail,
+          notify_on_response: notifyOnResponse,
         }),
       });
       if (!res.ok) throw new Error();

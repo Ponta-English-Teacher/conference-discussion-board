@@ -1,6 +1,6 @@
 'use client';
 
-import type { Question, Lang } from '@/types';
+import type { Question, Response, Lang } from '@/types';
 import QuestionRow from './QuestionRow';
 import { i18n } from '@/lib/i18n';
 
@@ -11,10 +11,12 @@ interface Props {
   highlightId: string | null;
   onBuildOn: (question: Question) => void;
   onVoteChange: (questionId: string, voted: boolean) => void;
+  responsesByQuestion: Map<string, Response[]>;
 }
 
 export default function QuestionList({
   questions, voterId, lang, highlightId, onBuildOn, onVoteChange,
+  responsesByQuestion,
 }: Props) {
   const t = i18n[lang].board;
 
@@ -42,6 +44,7 @@ export default function QuestionList({
           highlighted={highlightId === q.id}
           onBuildOn={onBuildOn}
           onVoteChange={onVoteChange}
+          responses={responsesByQuestion.get(q.id) ?? []}
         />
       ))}
     </div>

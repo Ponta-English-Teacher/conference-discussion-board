@@ -23,6 +23,8 @@ export interface Participant {
   name: string;
   affiliation: string;
   session_id: string; // which session this participant joined
+  email: string | null;
+  notify_on_response: boolean;
 }
 
 // content and context are immutable after creation — category_id and parent_id are the only mutable fields
@@ -40,6 +42,7 @@ export interface Question {
   author_name: string;
   author_affiliation: string;
   created_at: string;
+  notify_on_response: boolean;
   vote_count: number;
   voted_by_me?: boolean;
   category?: Category | null;
@@ -50,4 +53,15 @@ export interface Vote {
   id: string;
   question_id: string;
   voter_id: string;
+}
+
+export interface Response {
+  id: string;
+  question_id: string;
+  author_name: string;
+  author_affiliation: string;
+  content: string;            // immutable original in submission language
+  content_en: string | null;
+  content_ja: string | null;
+  created_at: string;
 }

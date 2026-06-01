@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/useLanguage';
-import type { Category, Question, Session } from '@/types';
+import type { Category, Question, Response, Session } from '@/types';
 import CategoryBadge from '@/components/board/CategoryBadge';
 
 interface Props {
@@ -26,6 +26,7 @@ export default function SessionDetail({ sessionId }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [responses, setResponses] = useState<Response[]>([]);
 
   // UI state
   const [newLabel, setNewLabel] = useState('');
@@ -81,9 +82,14 @@ export default function SessionDetail({ sessionId }: Props) {
     if (res.ok) setCategories(await res.json());
   }, [sessionId]);
 
+  const fetchResponses = useCallback(async () => {
+    const res = await fetch(`/api/responses?session_id=${sessionId}`);
+    if (res.ok) setResponses(await res.json());
+  }, [sessionId]);
+
   useEffect(() => {
-    Promise.all([fetchQuestions(), fetchCategories()]).finally(() => setLoading(false));
-  }, [fetchQuestions, fetchCategories]);
+    Promise.all([fetchQuestions(), fetchCategories(), fetchResponses()]).finally(() => setLoading(false));
+  }, [fetchQuestions, fetchCategories, fetchResponses]);
 
   useEffect(() => {
     const channel = supabase
@@ -93,9 +99,10 @@ export default function SessionDetail({ sessionId }: Props) {
         fetchCategories();
         fetchQuestions();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cdb_responses' }, fetchResponses)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [sessionId, fetchQuestions, fetchCategories]);
+  }, [sessionId, fetchQuestions, fetchCategories, fetchResponses]);
 
   async function assignCategory(questionId: string, categoryId: string | null) {
     await fetch(`/api/questions/${questionId}`, {
@@ -177,6 +184,13 @@ export default function SessionDetail({ sessionId }: Props) {
   const sessionTitle = session
     ? (lang === 'ja' && session.title_ja ? session.title_ja : session.title)
     : '';
+
+  // Build responses map keyed by question id
+  const responsesByQuestion = new Map<string, Response[]>();
+  for (const r of responses) {
+    if (!responsesByQuestion.has(r.question_id)) responsesByQuestion.set(r.question_id, []);
+    responsesByQuestion.get(r.question_id)!.push(r);
+  }
 
   // Build theme groups
   const catMap = new Map(categories.map(c => [c.id, c]));
@@ -480,6 +494,8 @@ export default function SessionDetail({ sessionId }: Props) {
                               contextOpen={expandedContextIds.has(q.id)}
                               onToggleContext={() => toggleContext(q.id)}
                               onAssign={assignCategory}
+                              responses={responsesByQuestion.get(q.id) ?? []}
+                              onResponseSubmitted={fetchResponses}
                             />
                           ))
                         )}
@@ -525,6 +541,8 @@ export default function SessionDetail({ sessionId }: Props) {
                           contextOpen={expandedContextIds.has(q.id)}
                           onToggleContext={() => toggleContext(q.id)}
                           onAssign={assignCategory}
+                          responses={responsesByQuestion.get(q.id) ?? []}
+                          onResponseSubmitted={fetchResponses}
                         />
                       ))}
                     </div>
@@ -680,13 +698,43 @@ interface QuestionItemProps {
   contextOpen: boolean;
   onToggleContext: () => void;
   onAssign: (questionId: string, categoryId: string | null) => void;
+  responses: Response[];
+  onResponseSubmitted: () => void;
 }
 
 function QuestionItem({
   question, categories, lang, tm, t,
   isRepresentative, isTrigger,
-  contextOpen, onToggleContext, onAssign,
+  contextOpen, onToggleContext, onAssign, responses, onResponseSubmitted,
 }: QuestionItemProps) {
+  const [respondOpen, setRespondOpen] = useState(false);
+  const [responseText, setResponseText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleRespond() {
+    if (!responseText.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question_id: question.id,
+          content: responseText.trim(),
+          author_name: lang === 'ja' ? 'モデレーター' : 'Moderator',
+          author_affiliation: lang === 'ja' ? 'セッション主催者' : 'Session Host',
+        }),
+      });
+      if (res.ok) {
+        setResponseText('');
+        setRespondOpen(false);
+        onResponseSubmitted();
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const displayContent = lang === 'ja'
     ? (question.content_ja ?? question.content)
     : (question.content_en ?? question.content);
@@ -724,6 +772,11 @@ function QuestionItem({
                 {contextOpen ? `− ${t.board.context}` : `+ ${tm.hasContext}`}
               </button>
             )}
+            {question.notify_on_response && (
+              <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5 font-medium">
+                {lang === 'ja' ? '回答通知あり' : 'Notification enabled'}
+              </span>
+            )}
           </div>
         </div>
 
@@ -755,6 +808,77 @@ function QuestionItem({
           />
         </div>
       )}
+
+      {/* Responses */}
+      {responses.length > 0 && (
+        <div className="ml-7 rounded-xl border border-slate-100 bg-slate-50/40 px-4 py-2.5 flex flex-col gap-2.5" style={{ borderLeft: '3px solid #6366F1' }}>
+          <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wide">
+            {lang === 'ja'
+              ? `${responses.length}件の公式回答`
+              : `${responses.length} Official ${responses.length === 1 ? 'Response' : 'Responses'}`}
+          </span>
+          {responses.map(r => {
+            const rPrimary = lang === 'ja' ? (r.content_ja ?? r.content) : (r.content_en ?? r.content);
+            const rSecondary = lang === 'ja' ? r.content_en : r.content_ja;
+            return (
+              <div key={r.id} className="pl-3 border-l-2 border-indigo-200 flex flex-col gap-0.5">
+                <BilingualText
+                  primary={rPrimary}
+                  secondary={rSecondary}
+                  secondaryLang={lang === 'en' ? 'JA' : 'EN'}
+                  primaryClassName="text-xs text-slate-700 leading-snug"
+                  secondaryClassName="text-xs text-slate-400 leading-snug"
+                />
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {r.author_name} · {r.author_affiliation}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add official response */}
+      <div className="ml-7">
+        {!respondOpen ? (
+          <button
+            onClick={() => setRespondOpen(true)}
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
+          >
+            + {lang === 'ja' ? '公式回答を追加' : 'Add Official Response'}
+          </button>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={responseText}
+              onChange={e => setResponseText(e.target.value)}
+              placeholder={lang === 'ja' ? 'この質問への公式回答を入力…' : 'Enter official response to this question…'}
+              rows={3}
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition resize-none"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setRespondOpen(false); setResponseText(''); }}
+                className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+              >
+                {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleRespond}
+                disabled={submitting || !responseText.trim()}
+                className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors font-semibold disabled:opacity-50"
+              >
+                {submitting
+                  ? (lang === 'ja' ? '送信中…' : 'Sending…')
+                  : (lang === 'ja' ? '回答を投稿' : 'Post Response')}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

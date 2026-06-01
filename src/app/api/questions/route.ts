@@ -14,12 +14,12 @@ export async function GET(req: NextRequest) {
 
   const db = createServerClient();
 
+  // Explicit column list — author_email is intentionally absent so it is never fetched.
+  // notify_on_response is a plain boolean with no PII, safe to return.
   // !category_id disambiguates the FK path: cdb_questions.category_id → cdb_categories.id
-  // After the bilingual migration, cdb_categories also references cdb_questions (representative/trigger),
-  // which would otherwise make PostgREST unable to pick the right join direction.
   const { data: questions, error } = await db
     .from('cdb_questions')
-    .select('*, category:cdb_categories!category_id(id, session_id, label, label_ja), parent:cdb_questions!parent_id(id, content, author_name)')
+    .select('id, session_id, category_id, parent_id, content, context, content_en, content_ja, context_en, context_ja, author_name, author_affiliation, created_at, notify_on_response, category:cdb_categories!category_id(id, session_id, label, label_ja), parent:cdb_questions!parent_id(id, content, author_name)')
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true });
 
@@ -59,13 +59,19 @@ export async function GET(req: NextRequest) {
 // POST /api/questions
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { session_id, content, context, author_name, author_affiliation, parent_id, lang } = body;
+  const { session_id, content, context, author_name, author_affiliation, parent_id, lang,
+          author_email, notify_on_response } = body;
 
   if (!session_id || !content?.trim() || !author_name?.trim() || !author_affiliation?.trim()) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
   const trimmedContext = context?.trim() || null;
+
+  // Server-side enforcement: notify_on_response is only true when both conditions hold.
+  // The client already validates this, but the server must not trust the client alone.
+  const safeEmail = author_email?.trim() || null;
+  const safeNotify = !!(notify_on_response && safeEmail);
 
   // Detect content language from the actual text, not the UI toggle.
   // A participant may type in English while the UI is in Japanese mode, or vice versa.
@@ -95,6 +101,8 @@ export async function POST(req: NextRequest) {
       content_ja: submissionLang === 'ja' ? content.trim() : null,
       context_en: submissionLang === 'en' ? trimmedContext : null,
       context_ja: submissionLang === 'ja' ? trimmedContext : null,
+      author_email: safeEmail,        // private — never returned by GET
+      notify_on_response: safeNotify,
     })
     .select()
     .single();
