@@ -31,8 +31,12 @@ export interface Question {
   session_id: string;
   category_id: string | null; // null = Uncategorized
   parent_id: string | null;
-  content: string;            // never overwritten after insert
-  context: string | null;     // optional background/reason; never overwritten after insert
+  content: string;            // immutable original in submission language
+  context: string | null;     // immutable original in submission language
+  content_en: string | null;  // English version: original if submitted in EN, AI translation if submitted in JA
+  content_ja: string | null;  // Japanese version: original if submitted in JA, AI translation if submitted in EN
+  context_en: string | null;  // English context version
+  context_ja: string | null;  // Japanese context version
   author_name: string;
   author_affiliation: string;
   created_at: string;

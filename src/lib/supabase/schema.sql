@@ -36,12 +36,20 @@ CREATE TABLE cdb_questions (
   session_id          UUID NOT NULL REFERENCES cdb_sessions(id) ON DELETE CASCADE,
   category_id         UUID REFERENCES cdb_categories(id) ON DELETE SET NULL, -- NULL = Uncategorized
   parent_id           UUID REFERENCES cdb_questions(id) ON DELETE SET NULL,
-  content             TEXT NOT NULL,        -- IMMUTABLE: never overwrite after creation
-  context             TEXT,                 -- IMMUTABLE: optional background/reason; added via migration
+  content             TEXT NOT NULL,        -- IMMUTABLE: original text in submission language
+  context             TEXT,                 -- IMMUTABLE: optional background/reason in submission language
+  content_en          TEXT,                 -- English version: original if submitted in EN, AI translation if submitted in JA
+  content_ja          TEXT,                 -- Japanese version: original if submitted in JA, AI translation if submitted in EN
+  context_en          TEXT,                 -- English context version
+  context_ja          TEXT,                 -- Japanese context version
   author_name         TEXT NOT NULL,
   author_affiliation  TEXT NOT NULL,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Migrations applied:
+--   ALTER TABLE cdb_questions ADD COLUMN context TEXT;
+--   ALTER TABLE cdb_questions ADD COLUMN content_en TEXT, ADD COLUMN content_ja TEXT,
+--     ADD COLUMN context_en TEXT, ADD COLUMN context_ja TEXT;
 
 -- cdb_votes: one row per (question, voter) pair — DB enforces no double-voting
 -- Note: cdb_participants are stored client-side in sessionStorage (no DB table needed)

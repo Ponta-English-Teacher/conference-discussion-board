@@ -18,6 +18,8 @@ export default function ModeratorPanel() {
   const [createError, setCreateError] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [confirmDeleteSession, setConfirmDeleteSession] = useState<Session | null>(null);
+  const [deletingSession, setDeletingSession] = useState(false);
 
   async function fetchSessions() {
     const res = await fetch('/api/sessions');
@@ -83,6 +85,19 @@ export default function ModeratorPanel() {
       }
     } finally {
       setTogglingId(null);
+    }
+  }
+
+  async function handleDeleteSession(session: Session) {
+    setDeletingSession(true);
+    try {
+      const res = await fetch(`/api/sessions/${session.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setConfirmDeleteSession(null);
+        setSessions(prev => prev.filter(s => s.id !== session.id));
+      }
+    } finally {
+      setDeletingSession(false);
     }
   }
 
@@ -218,12 +233,71 @@ export default function ModeratorPanel() {
                       {copiedId === s.id ? tm.linkCopied : tm.copyLink}
                     </button>
                   </div>
+
+                  {/* Danger strip */}
+                  <div className="flex items-center justify-end px-5 py-2 border-t border-slate-100">
+                    <button
+                      onClick={() => setConfirmDeleteSession(s)}
+                      className="text-xs text-slate-400 hover:text-red-500 transition-colors"
+                    >
+                      {lang === 'ja' ? 'セッションを削除' : 'Delete session'}
+                    </button>
+                  </div>
                 </div>
               );
             })
           )}
         </section>
       </main>
+
+      {/* Delete session confirmation modal */}
+      {confirmDeleteSession && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full border border-slate-200/60 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm">
+                  {lang === 'ja' ? 'セッションを完全に削除しますか？' : 'Permanently delete this session?'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium truncate max-w-[200px]">
+                  {lang === 'ja' && confirmDeleteSession.title_ja
+                    ? confirmDeleteSession.title_ja
+                    : confirmDeleteSession.title}
+                </p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700 leading-relaxed">
+              {lang === 'ja'
+                ? `このセッションのすべての質問（${confirmDeleteSession.question_count ?? 0}件）、カテゴリー、投票が完全に削除されます。この操作は元に戻せません。`
+                : `All ${confirmDeleteSession.question_count ?? 0} questions, categories, and votes for this session will be permanently deleted. This cannot be undone.`}
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleDeleteSession(confirmDeleteSession)}
+                disabled={deletingSession}
+                className="w-full py-2.5 text-sm bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-bold shadow-sm disabled:opacity-50"
+              >
+                {deletingSession
+                  ? (lang === 'ja' ? '削除中…' : 'Deleting…')
+                  : (lang === 'ja' ? '完全に削除する — この操作は元に戻せません' : 'Delete permanently — this cannot be undone')}
+              </button>
+              <button
+                onClick={() => setConfirmDeleteSession(null)}
+                autoFocus
+                className="w-full py-2.5 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors font-medium"
+              >
+                {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

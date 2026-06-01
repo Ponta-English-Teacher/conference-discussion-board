@@ -41,6 +41,7 @@ export default function NewNoteForm({
           author_name: authorName,
           author_affiliation: authorAffiliation,
           parent_id: parent?.id ?? null,
+          lang,
         }),
       });
       if (!res.ok) throw new Error();

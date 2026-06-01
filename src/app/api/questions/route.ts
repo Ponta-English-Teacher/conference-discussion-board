@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { classifyQuestion } from '@/lib/openai';
+import { classifyQuestion, translateText } from '@/lib/openai';
 
 // GET /api/questions?session_id=<id>&voter_id=<id>
 export async function GET(req: NextRequest) {
@@ -14,8 +14,9 @@ export async function GET(req: NextRequest) {
 
   const db = createServerClient();
 
-  // Query the base table (not the view) — PostgREST can only traverse FK
-  // relations on base tables, not on views with aggregations.
+  // !category_id disambiguates the FK path: cdb_questions.category_id → cdb_categories.id
+  // After the bilingual migration, cdb_categories also references cdb_questions (representative/trigger),
+  // which would otherwise make PostgREST unable to pick the right join direction.
   const { data: questions, error } = await db
     .from('cdb_questions')
     .select('*, category:cdb_categories!category_id(id, session_id, label, label_ja), parent:cdb_questions!parent_id(id, content, author_name)')
@@ -26,7 +27,6 @@ export async function GET(req: NextRequest) {
 
   const questionIds = (questions ?? []).map(q => q.id);
 
-  // Single vote query covers both vote counts and voted_by_me annotation
   const voteCountMap = new Map<string, number>();
   const votedQuestionIds = new Set<string>();
 
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 // POST /api/questions
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { session_id, content, context, author_name, author_affiliation, parent_id } = body;
+  const { session_id, content, context, author_name, author_affiliation, parent_id, lang } = body;
 
   if (!session_id || !content?.trim() || !author_name?.trim() || !author_affiliation?.trim()) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -67,49 +67,92 @@ export async function POST(req: NextRequest) {
 
   const trimmedContext = context?.trim() || null;
 
+  // Detect content language from the actual text, not the UI toggle.
+  // A participant may type in English while the UI is in Japanese mode, or vice versa.
+  // Hiragana U+3040–U+30FF, Katakana U+30A0–U+30FF, CJK Unified Ideographs U+4E00–U+9FAF
+  function detectLang(text: string): 'en' | 'ja' {
+    return /[぀-ヿ一-龯]/.test(text) ? 'ja' : 'en';
+  }
+
+  const submissionLang = detectLang(content.trim());
+  const translateDir = submissionLang === 'en' ? 'en-to-ja' : 'ja-to-en';
+
   const db = createServerClient();
 
+  // Insert the question immediately — content and context are stored as immutable originals.
+  // Same-language columns are pre-filled as copies (no AI needed); other-language columns start null.
   const { data: question, error } = await db
     .from('cdb_questions')
     .insert({
       session_id,
-      content: content.trim(),  // stored as-is, never mutated
-      context: trimmedContext,  // stored as-is, never mutated; null if not provided
+      content: content.trim(),       // immutable original — never update this
+      context: trimmedContext,        // immutable original — never update this
       author_name: author_name.trim(),
       author_affiliation: author_affiliation.trim(),
       parent_id: parent_id ?? null,
       category_id: null,
+      content_en: submissionLang === 'en' ? content.trim() : null,
+      content_ja: submissionLang === 'ja' ? content.trim() : null,
+      context_en: submissionLang === 'en' ? trimmedContext : null,
+      context_ja: submissionLang === 'ja' ? trimmedContext : null,
     })
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // AI categorization — runs synchronously with a 4s timeout so the board
-  // receives the category in the same response. Falls back to Uncategorized
-  // silently on timeout or any OpenAI error; original content is never touched.
+  // Fetch categories for AI classification
   const { data: categories } = await db
     .from('cdb_categories')
     .select('id, label, label_ja')
     .eq('session_id', session_id);
 
-  if (categories?.length) {
-    try {
-      const aiCategoryId = await Promise.race([
-        classifyQuestion(content.trim(), categories, trimmedContext),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), 4000)),
-      ]);
-      if (aiCategoryId) {
-        await db
-          .from('cdb_questions')
-          .update({ category_id: aiCategoryId })
-          .eq('id', question.id);
-        return NextResponse.json({ ...question, category_id: aiCategoryId }, { status: 201 });
-      }
-    } catch {
-      // AI unavailable — return Uncategorized without failing the submission
+  // Promise that resolves null after ms — used to cap AI call durations
+  const timeout = (ms: number): Promise<null> =>
+    new Promise(resolve => setTimeout(() => resolve(null), ms));
+
+  // Categorization and translation run in parallel — total wait ≈ max(4s, 3s) = 4s
+  const [aiCategoryId, translatedContent, translatedContext] = await Promise.all([
+    categories?.length
+      ? Promise.race([
+          classifyQuestion(content.trim(), categories, trimmedContext).catch(() => null),
+          timeout(4000),
+        ])
+      : Promise.resolve(null),
+
+    Promise.race([
+      translateText(content.trim(), translateDir).catch(() => null),
+      timeout(3000),
+    ]),
+
+    trimmedContext
+      ? Promise.race([
+          translateText(trimmedContext, translateDir).catch(() => null),
+          timeout(3000),
+        ])
+      : Promise.resolve(null),
+  ]);
+
+  // Build a single UPDATE — content and context columns are never included here
+  const updates: Record<string, string | null> = {};
+
+  if (aiCategoryId) {
+    updates.category_id = aiCategoryId;
+  }
+
+  if (translatedContent) {
+    if (submissionLang === 'en') {
+      updates.content_ja = translatedContent;
+      if (translatedContext) updates.context_ja = translatedContext;
+    } else {
+      updates.content_en = translatedContent;
+      if (translatedContext) updates.context_en = translatedContext;
     }
   }
 
-  return NextResponse.json(question, { status: 201 });
+  if (Object.keys(updates).length > 0) {
+    await db.from('cdb_questions').update(updates).eq('id', question.id);
+  }
+
+  return NextResponse.json({ ...question, ...updates }, { status: 201 });
 }

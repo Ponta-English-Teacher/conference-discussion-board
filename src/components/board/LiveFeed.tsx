@@ -26,14 +26,18 @@ export default function LiveFeed({ questions, lang, onSelect }: Props) {
             {lang === 'ja' ? 'まだ質問がありません' : 'No questions yet'}
           </p>
         ) : (
-          latest.map(q => (
+          latest.map(q => {
+            const displayContent = lang === 'ja'
+              ? (q.content_ja ?? q.content)
+              : (q.content_en ?? q.content);
+            return (
             <button
               key={q.id}
               onClick={() => onSelect(q.id)}
               className="w-full text-left px-4 py-3 hover:bg-indigo-50/60 transition-colors flex flex-col gap-1"
             >
               <p className="text-xs text-slate-700 leading-relaxed line-clamp-2 font-medium">
-                {q.content}
+                {displayContent}
               </p>
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
                 <span className="truncate flex-1">{q.author_name}</span>
@@ -41,7 +45,8 @@ export default function LiveFeed({ questions, lang, onSelect }: Props) {
                 <span className="text-indigo-500 font-semibold shrink-0">▲ {q.vote_count}</span>
               </div>
             </button>
-          ))
+            );
+          })
         )}
       </div>
     </div>

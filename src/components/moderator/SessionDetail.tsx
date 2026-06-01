@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/useLanguage';
 import type { Category, Question, Session } from '@/types';
@@ -40,6 +41,13 @@ export default function SessionDetail({ sessionId }: Props) {
   const [organizing, setOrganizing] = useState(false);
   const [organizeError, setOrganizeError] = useState('');
   const [confirmOrganize, setConfirmOrganize] = useState(false);
+
+  // QR code state
+  const [showQr, setShowQr] = useState(false);
+
+  // Reset Questions state
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   function toggleCategoryExpand(id: string) {
     setExpandedCategoryIds(prev => {
@@ -147,6 +155,19 @@ export default function SessionDetail({ sessionId }: Props) {
     }
   }
 
+  async function handleReset() {
+    setConfirmReset(false);
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/reset`, { method: 'POST' });
+      if (res.ok) {
+        await Promise.all([fetchCategories(), fetchQuestions()]);
+      }
+    } finally {
+      setResetting(false);
+    }
+  }
+
   function copyBoardLink() {
     navigator.clipboard.writeText(`${window.location.origin}/board/${sessionId}`);
     setCopiedLink(true);
@@ -226,7 +247,34 @@ export default function SessionDetail({ sessionId }: Props) {
           >
             {copiedLink ? tm.linkCopied : tm.copyLink}
           </button>
+          <button
+            onClick={() => setShowQr(o => !o)}
+            className={`shrink-0 text-xs border rounded-lg px-3 py-1.5 transition-colors font-medium ${
+              showQr
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+            }`}
+          >
+            QR
+          </button>
         </div>
+
+        {/* QR code panel */}
+        {showQr && (
+          <div className="mt-3 flex flex-col items-center gap-3 bg-white rounded-2xl border border-slate-200/60 p-6">
+            <QRCodeSVG
+              value={typeof window !== 'undefined' ? `${window.location.origin}/board/${sessionId}` : `/board/${sessionId}`}
+              size={180}
+              bgColor="#ffffff"
+              fgColor="#1e1b4b"
+            />
+            <p className="text-xs text-slate-500 text-center">
+              {lang === 'ja'
+                ? 'QRコードをスキャンして参加'
+                : 'Scan to join the participant board'}
+            </p>
+          </div>
+        )}
 
         {/* AI Organize + Add Category */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -326,6 +374,15 @@ export default function SessionDetail({ sessionId }: Props) {
               {lang === 'ja' ? 'テーマ別一覧' : 'Themes'}{' '}
               <span className="font-normal text-slate-400">({questions.length})</span>
             </h2>
+            <button
+              onClick={() => setConfirmReset(true)}
+              disabled={resetting || questions.length === 0}
+              className="text-xs text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40"
+            >
+              {resetting
+                ? (lang === 'ja' ? '削除中…' : 'Resetting…')
+                : (lang === 'ja' ? '質問をリセット' : 'Reset Questions')}
+            </button>
           </div>
 
           {loading ? (
@@ -497,6 +554,38 @@ export default function SessionDetail({ sessionId }: Props) {
         </div>
       )}
 
+      {/* Reset Questions confirmation */}
+      {confirmReset && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full border border-slate-200/60 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-slate-800 text-sm">
+                {lang === 'ja' ? 'すべての質問を削除しますか？' : 'Delete all questions?'}
+              </h3>
+            </div>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              {lang === 'ja'
+                ? 'すべての質問と投票が削除されます。セッションとカテゴリーは保持されます。この操作は元に戻せません。'
+                : 'All questions and votes will be permanently deleted. The session and categories will be kept. This cannot be undone.'}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmReset(false)} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors font-medium">
+                {tm.cancelDelete}
+              </button>
+              <button onClick={handleReset} className="px-4 py-2 text-sm bg-red-600 text-white rounded-xl hover:bg-red-500 transition-colors font-semibold shadow-sm">
+                {lang === 'ja' ? '削除する' : 'Delete all questions'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* AI Organize confirmation */}
       {confirmOrganize && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 px-4">
@@ -552,6 +641,14 @@ function QuestionItem({
   isRepresentative, isTrigger,
   contextOpen, onToggleContext, onAssign,
 }: QuestionItemProps) {
+  const displayContent = lang === 'ja'
+    ? (question.content_ja ?? question.content)
+    : (question.content_en ?? question.content);
+
+  const displayContext = lang === 'ja'
+    ? (question.context_ja ?? question.context)
+    : (question.context_en ?? question.context);
+
   return (
     <div className="px-5 py-3 flex flex-col gap-2">
       <div className="flex items-start gap-2">
@@ -565,11 +662,11 @@ function QuestionItem({
         {!isRepresentative && !isTrigger && <span className="w-5 shrink-0" />}
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-slate-800 font-medium leading-snug">{question.content}</p>
+          <p className="text-sm text-slate-800 font-medium leading-snug">{displayContent}</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-xs text-slate-400">{question.author_name} · {question.author_affiliation}</span>
             <span className="text-xs font-semibold text-indigo-600">▲ {question.vote_count}</span>
-            {question.context && (
+            {displayContext && (
               <button
                 onClick={onToggleContext}
                 className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 hover:bg-amber-100 transition-colors font-medium"
@@ -595,11 +692,11 @@ function QuestionItem({
         </select>
       </div>
 
-      {/* Context */}
-      {question.context && contextOpen && (
+      {/* Context in viewer's language */}
+      {displayContext && contextOpen && (
         <div className="ml-7 bg-amber-50/60 rounded-xl border border-amber-100 px-4 py-2.5" style={{ borderLeft: '3px solid #F59E0B' }}>
           <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide block mb-1">{t.board.context}</span>
-          <p className="text-xs text-slate-600 leading-relaxed">{question.context}</p>
+          <p className="text-xs text-slate-600 leading-relaxed">{displayContext}</p>
         </div>
       )}
     </div>

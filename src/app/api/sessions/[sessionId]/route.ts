@@ -23,6 +23,23 @@ export async function GET(
   return NextResponse.json(data);
 }
 
+// DELETE /api/sessions/:sessionId — permanently deletes the session and all its data via DB cascade
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const { sessionId } = await params;
+  const db = createServerClient();
+
+  const { error } = await db
+    .from('cdb_sessions')
+    .delete()
+    .eq('id', sessionId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
 // PATCH /api/sessions/:sessionId — toggle is_active (moderator only)
 export async function PATCH(
   req: NextRequest,
