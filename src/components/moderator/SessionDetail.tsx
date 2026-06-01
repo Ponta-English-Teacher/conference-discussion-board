@@ -774,7 +774,7 @@ function QuestionItem({
             )}
             {question.notify_on_response && (
               <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5 font-medium">
-                {lang === 'ja' ? '回答通知あり' : 'Notification enabled'}
+                {lang === 'ja' ? '通知希望' : 'Notification requested'}
               </span>
             )}
           </div>
