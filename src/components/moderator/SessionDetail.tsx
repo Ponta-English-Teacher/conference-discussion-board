@@ -433,13 +433,27 @@ export default function SessionDetail({ sessionId }: Props) {
                         {repQuestion && (
                           <div className="flex items-start gap-2">
                             <span className="text-xs shrink-0 font-semibold text-amber-600 w-5 text-center mt-0.5">★</span>
-                            <p className="text-xs text-slate-600 leading-snug line-clamp-1">{repQuestion.content}</p>
+                            <BilingualText
+                              primary={lang === 'en' ? (repQuestion.content_en ?? repQuestion.content) : (repQuestion.content_ja ?? repQuestion.content)}
+                              secondary={lang === 'en' ? repQuestion.content_ja : repQuestion.content_en}
+                              secondaryLang={lang === 'en' ? 'JA' : 'EN'}
+                              primaryClassName="text-xs text-slate-600 leading-snug"
+                              secondaryClassName="text-xs text-slate-400 leading-snug"
+                              lineClamp
+                            />
                           </div>
                         )}
                         {triggerQuestion && triggerQuestion.id !== repQuestion?.id && (
                           <div className="flex items-start gap-2">
                             <span className="text-xs shrink-0 font-semibold text-indigo-500 w-5 text-center mt-0.5">⚡</span>
-                            <p className="text-xs text-slate-600 leading-snug line-clamp-1">{triggerQuestion.content}</p>
+                            <BilingualText
+                              primary={lang === 'en' ? (triggerQuestion.content_en ?? triggerQuestion.content) : (triggerQuestion.content_ja ?? triggerQuestion.content)}
+                              secondary={lang === 'en' ? triggerQuestion.content_ja : triggerQuestion.content_en}
+                              secondaryLang={lang === 'en' ? 'JA' : 'EN'}
+                              primaryClassName="text-xs text-slate-600 leading-snug"
+                              secondaryClassName="text-xs text-slate-400 leading-snug"
+                              lineClamp
+                            />
                           </div>
                         )}
                       </div>
@@ -620,6 +634,38 @@ export default function SessionDetail({ sessionId }: Props) {
   );
 }
 
+// ── Compact bilingual text: primary line + muted secondary line ─────────────
+function BilingualText({
+  primary,
+  secondary,
+  secondaryLang,
+  primaryClassName = 'text-sm text-slate-800 font-medium leading-snug',
+  secondaryClassName = 'text-xs text-slate-400 leading-snug',
+  lineClamp = false,
+}: {
+  primary: string | null | undefined;
+  secondary: string | null | undefined;
+  secondaryLang: 'EN' | 'JA';
+  primaryClassName?: string;
+  secondaryClassName?: string;
+  lineClamp?: boolean;
+}) {
+  if (!primary) return null;
+  const pCls = lineClamp ? `${primaryClassName} line-clamp-1` : primaryClassName;
+  const sCls = lineClamp ? `${secondaryClassName} line-clamp-1` : secondaryClassName;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className={pCls}>{primary}</p>
+      {secondary && (
+        <p className={sCls}>
+          <span className="font-bold text-[10px] tracking-wide mr-1 text-slate-300">{secondaryLang}</span>
+          {secondary}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Inline sub-component for a single question row inside a theme ──────────
 interface QuestionItemProps {
   question: Question;
@@ -662,7 +708,11 @@ function QuestionItem({
         {!isRepresentative && !isTrigger && <span className="w-5 shrink-0" />}
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-slate-800 font-medium leading-snug">{displayContent}</p>
+          <BilingualText
+              primary={displayContent}
+              secondary={lang === 'en' ? question.content_ja : question.content_en}
+              secondaryLang={lang === 'en' ? 'JA' : 'EN'}
+            />
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-xs text-slate-400">{question.author_name} · {question.author_affiliation}</span>
             <span className="text-xs font-semibold text-indigo-600">▲ {question.vote_count}</span>
@@ -696,7 +746,13 @@ function QuestionItem({
       {displayContext && contextOpen && (
         <div className="ml-7 bg-amber-50/60 rounded-xl border border-amber-100 px-4 py-2.5" style={{ borderLeft: '3px solid #F59E0B' }}>
           <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide block mb-1">{t.board.context}</span>
-          <p className="text-xs text-slate-600 leading-relaxed">{displayContext}</p>
+          <BilingualText
+            primary={displayContext}
+            secondary={lang === 'en' ? question.context_ja : question.context_en}
+            secondaryLang={lang === 'en' ? 'JA' : 'EN'}
+            primaryClassName="text-xs text-slate-600 leading-relaxed"
+            secondaryClassName="text-xs text-slate-400 leading-relaxed"
+          />
         </div>
       )}
     </div>
