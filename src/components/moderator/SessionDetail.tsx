@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/useLanguage';
 import type { Category, Question, Response, Session } from '@/types';
 import CategoryBadge from '@/components/board/CategoryBadge';
+import ResponseWorkshop from '@/components/moderator/ResponseWorkshop';
 
 interface Props {
   sessionId: string;
@@ -707,34 +708,6 @@ function QuestionItem({
   isRepresentative, isTrigger,
   contextOpen, onToggleContext, onAssign, responses, onResponseSubmitted,
 }: QuestionItemProps) {
-  const [respondOpen, setRespondOpen] = useState(false);
-  const [responseText, setResponseText] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleRespond() {
-    if (!responseText.trim() || submitting) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/responses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question_id: question.id,
-          content: responseText.trim(),
-          author_name: lang === 'ja' ? 'モデレーター' : 'Moderator',
-          author_affiliation: lang === 'ja' ? 'セッション主催者' : 'Session Host',
-        }),
-      });
-      if (res.ok) {
-        setResponseText('');
-        setRespondOpen(false);
-        onResponseSubmitted();
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   const displayContent = lang === 'ja'
     ? (question.content_ja ?? question.content)
     : (question.content_en ?? question.content);
@@ -838,46 +811,9 @@ function QuestionItem({
         </div>
       )}
 
-      {/* Add official response */}
+      {/* Response Workshop — moderator-only, participants never see this */}
       <div className="ml-7">
-        {!respondOpen ? (
-          <button
-            onClick={() => setRespondOpen(true)}
-            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
-          >
-            + {lang === 'ja' ? '公式回答を追加' : 'Add Official Response'}
-          </button>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <textarea
-              value={responseText}
-              onChange={e => setResponseText(e.target.value)}
-              placeholder={lang === 'ja' ? 'この質問への公式回答を入力…' : 'Enter official response to this question…'}
-              rows={3}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition resize-none"
-              autoFocus
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => { setRespondOpen(false); setResponseText(''); }}
-                className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors font-medium"
-              >
-                {lang === 'ja' ? 'キャンセル' : 'Cancel'}
-              </button>
-              <button
-                type="button"
-                onClick={handleRespond}
-                disabled={submitting || !responseText.trim()}
-                className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors font-semibold disabled:opacity-50"
-              >
-                {submitting
-                  ? (lang === 'ja' ? '送信中…' : 'Sending…')
-                  : (lang === 'ja' ? '回答を投稿' : 'Post Response')}
-              </button>
-            </div>
-          </div>
-        )}
+        <ResponseWorkshop question={question} lang={lang} onResponseSubmitted={onResponseSubmitted} />
       </div>
     </div>
   );

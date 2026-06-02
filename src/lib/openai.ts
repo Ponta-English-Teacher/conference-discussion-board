@@ -193,6 +193,84 @@ Output schema:
   return { assignments: validAssignments };
 }
 
+export interface WorkshopMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Language consultant AI for the moderator Response Workshop.
+ * Helps the moderator express their own idea more clearly — never answers on their behalf.
+ * The participant question and current draft are embedded in the system prompt so
+ * the AI always works with the latest context without storing it in conversation history.
+ * Returns the AI's reply string, or null if the API key is absent or the call fails.
+ */
+export async function workshopChat(
+  question: {
+    content: string;
+    content_en: string | null;
+    content_ja: string | null;
+    context: string | null;
+  },
+  draft: string,
+  messages: WorkshopMessage[]
+): Promise<string | null> {
+  if (!messages.length || !process.env.OPENAI_API_KEY) return null;
+
+  const questionLines: string[] = [`Original: ${question.content}`];
+  if (question.content_en && question.content_en !== question.content)
+    questionLines.push(`English: ${question.content_en}`);
+  if (question.content_ja && question.content_ja !== question.content)
+    questionLines.push(`Japanese: ${question.content_ja}`);
+  if (question.context?.trim())
+    questionLines.push(`Context/background: ${question.context.trim()}`);
+
+  const questionBlock = questionLines.join('\n');
+  const draftBlock = draft.trim() || '(empty — not yet written)';
+
+  const systemPrompt =
+    `You are a language consultant and editorial partner helping a conference moderator craft an official response to a participant question.\n\n` +
+    `The conference audience includes researchers, practitioners, and students from various countries. ` +
+    `Many are non-native English speakers. Responses may be shown in both English and Japanese.\n\n` +
+    `PARTICIPANT QUESTION:\n${questionBlock}\n\n` +
+    `MODERATOR'S CURRENT DRAFT:\n${draftBlock}\n\n` +
+    `CORE PRINCIPLE:\n` +
+    `A non-empty draft is evidence of the moderator's intention. Treat it as their expressed position and help them say it better. ` +
+    `Do not question whether they mean it.\n\n` +
+    `OUTPUT FORMAT — use this exact structure every time:\n\n` +
+    `UNDERSTANDING: [One sentence stating how you read the moderator's intention]\n` +
+    `---\n` +
+    `[Clean, participant-facing response text — nothing else after the ---]\n\n` +
+    `Rules for the text after ---:\n` +
+    `- It must be clean and immediately usable as a participant-visible response.\n` +
+    `- No labels, no "Suggested response:", no "Is this what you want to say?", no explanations.\n` +
+    `- Keep it concise — this is a conference Q&A, not an essay.\n` +
+    `- Never add ideas or positions the moderator has not expressed.\n\n` +
+    `BEHAVIORAL RULES:\n` +
+    `1. Always produce a suggested response. Never withhold a suggestion to ask for confirmation first.\n` +
+    `2. When the draft is non-empty, act as an editor: improve clarity, tone, and audience fit.\n` +
+    `3. When the draft is empty or input is vague, make a best-effort interpretation and produce a suggestion. ` +
+    `State your interpretation in the UNDERSTANDING line so the moderator can correct it.\n` +
+    `4. For follow-up requests ("shorter", "more encouraging", "Japanese version", "more formal"): ` +
+    `use the UNDERSTANDING line to note briefly what changed (e.g., "You want a shorter version."), ` +
+    `then provide the refined response after ---.\n` +
+    `5. For Japanese requests, provide natural Japanese after ---. For bilingual requests, provide both languages after ---.\n` +
+    `6. Never publish, overwrite, or decide the final response. All decisions belong to the moderator.`;
+
+  const response = await getClient().chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.7,
+    max_tokens: 800,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages,
+    ],
+  });
+
+  const result = (response.choices[0]?.message?.content ?? '').trim();
+  return result || null;
+}
+
 /**
  * Classifies a question against a list of moderator-defined categories.
  * Returns the matching category ID, or null if uncertain or no categories exist.
