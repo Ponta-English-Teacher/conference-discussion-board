@@ -64,4 +64,12 @@ export interface Response {
   content_en: string | null;
   content_ja: string | null;
   created_at: string;
+  email_sent: boolean;
+  email_sent_at: string | null;
+}
+
+export interface ModeratorProfile {
+  display_name: string;
+  affiliation: string;
+  email_signature: string;
 }

@@ -9,6 +9,9 @@ import type { Category, Question, Response, Session } from '@/types';
 import CategoryBadge from '@/components/board/CategoryBadge';
 import ResponseWorkshop from '@/components/moderator/ResponseWorkshop';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
+
 interface Props {
   sessionId: string;
 }
@@ -690,10 +693,8 @@ interface QuestionItemProps {
   question: Question;
   categories: Category[];
   lang: 'en' | 'ja';
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tm: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  t: any;
+  tm: AnyRecord;
+  t: AnyRecord;
   isRepresentative: boolean;
   isTrigger: boolean;
   contextOpen: boolean;
@@ -708,6 +709,27 @@ function QuestionItem({
   isRepresentative, isTrigger,
   contextOpen, onToggleContext, onAssign, responses, onResponseSubmitted,
 }: QuestionItemProps) {
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  async function handleSendEmail(responseId: string) {
+    setSendingEmailId(responseId);
+    setEmailError(null);
+    try {
+      const res = await fetch(`/api/responses/${responseId}/send-email`, { method: 'POST' });
+      if (res.ok) {
+        onResponseSubmitted();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setEmailError(body.error ?? (lang === 'ja' ? 'メール送信に失敗しました' : 'Failed to send email'));
+      }
+    } catch {
+      setEmailError(lang === 'ja' ? 'ネットワークエラー' : 'Network error');
+    } finally {
+      setSendingEmailId(null);
+    }
+  }
+
   const displayContent = lang === 'ja'
     ? (question.content_ja ?? question.content)
     : (question.content_en ?? question.content);
@@ -794,7 +816,7 @@ function QuestionItem({
             const rPrimary = lang === 'ja' ? (r.content_ja ?? r.content) : (r.content_en ?? r.content);
             const rSecondary = lang === 'ja' ? r.content_en : r.content_ja;
             return (
-              <div key={r.id} className="pl-3 border-l-2 border-indigo-200 flex flex-col gap-0.5">
+              <div key={r.id} className="pl-3 border-l-2 border-indigo-200 flex flex-col gap-1.5">
                 <BilingualText
                   primary={rPrimary}
                   secondary={rSecondary}
@@ -802,12 +824,42 @@ function QuestionItem({
                   primaryClassName="text-xs text-slate-700 leading-snug"
                   secondaryClassName="text-xs text-slate-400 leading-snug"
                 />
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {r.author_name} · {r.author_affiliation}
-                </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <p className="text-xs text-slate-400">
+                    {r.author_name} · {r.author_affiliation}
+                  </p>
+                  {/* Email delivery action — only shown when participant requested it */}
+                  {question.notify_on_response && (
+                    r.email_sent ? (
+                      <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5 font-medium">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        {lang === 'ja' ? 'メール送信済み' : 'Email sent'}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleSendEmail(r.id)}
+                        disabled={sendingEmailId === r.id}
+                        className="inline-flex items-center gap-1 text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-2.5 py-0.5 hover:bg-sky-100 transition-colors font-medium disabled:opacity-50"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        {sendingEmailId === r.id
+                          ? (lang === 'ja' ? '送信中…' : 'Sending…')
+                          : (lang === 'ja' ? 'メールで送る' : 'Send by Email')}
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
             );
           })}
+          {emailError && (
+            <p className="text-xs text-red-500">{emailError}</p>
+          )}
         </div>
       )}
 

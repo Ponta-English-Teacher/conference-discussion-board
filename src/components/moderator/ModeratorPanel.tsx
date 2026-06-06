@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '@/lib/useLanguage';
-import type { Session } from '@/types';
+import type { ModeratorProfile, Session } from '@/types';
 
 export default function ModeratorPanel() {
   const { lang, toggle, t } = useLanguage();
@@ -21,6 +21,12 @@ export default function ModeratorPanel() {
   const [confirmDeleteSession, setConfirmDeleteSession] = useState<Session | null>(null);
   const [deletingSession, setDeletingSession] = useState(false);
 
+  // Moderator profile state
+  const [profile, setProfile] = useState<ModeratorProfile>({ display_name: '', affiliation: '', email_signature: '' });
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+
   async function fetchSessions() {
     const res = await fetch('/api/sessions');
     if (res.ok) {
@@ -34,7 +40,30 @@ export default function ModeratorPanel() {
 
   useEffect(() => {
     fetchSessions().finally(() => setLoading(false));
+    fetch('/api/moderator-profile')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setProfile(data); })
+      .catch(() => {});
   }, []);
+
+  async function saveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingProfile(true);
+    setProfileSaved(false);
+    try {
+      const res = await fetch('/api/moderator-profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      });
+      if (res.ok) {
+        setProfileSaved(true);
+        setTimeout(() => setProfileSaved(false), 2500);
+      }
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   async function handleCreateSession(e: React.FormEvent) {
     e.preventDefault();
@@ -129,6 +158,73 @@ export default function ModeratorPanel() {
       </header>
 
       <main className="flex-1 p-5 max-w-3xl mx-auto w-full flex flex-col gap-6">
+
+        {/* Moderator profile */}
+        <section className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
+          <button
+            onClick={() => setProfileOpen(o => !o)}
+            className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/60 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <h2 className="font-semibold text-sm text-slate-700">
+                {lang === 'ja' ? 'モデレータープロフィール（メール署名）' : 'Moderator Profile (Email Signature)'}
+              </h2>
+            </div>
+            <span className="text-slate-300 text-sm">{profileOpen ? '▲' : '▼'}</span>
+          </button>
+          {profileOpen && (
+            <div className="border-t border-slate-100 p-5">
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                {lang === 'ja'
+                  ? '参加者にメールで回答を送る際、以下の情報が署名として追加されます。'
+                  : 'This information is included in the signature when you send responses by email to participants.'}
+              </p>
+              <form onSubmit={saveProfile} className="flex flex-col gap-3">
+                <input
+                  type="text"
+                  value={profile.display_name}
+                  onChange={e => setProfile(p => ({ ...p, display_name: e.target.value }))}
+                  placeholder={lang === 'ja' ? '名前（例：田中 一郎）' : 'Display name (e.g. Dr. Jane Smith)'}
+                  className="border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+                />
+                <input
+                  type="text"
+                  value={profile.affiliation}
+                  onChange={e => setProfile(p => ({ ...p, affiliation: e.target.value }))}
+                  placeholder={lang === 'ja' ? '所属（例：〇〇大学）' : 'Affiliation (e.g. University of Tokyo)'}
+                  className="border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+                />
+                <textarea
+                  value={profile.email_signature}
+                  onChange={e => setProfile(p => ({ ...p, email_signature: e.target.value }))}
+                  placeholder={lang === 'ja' ? '追加の署名テキスト（任意）' : 'Additional signature text (optional)'}
+                  rows={3}
+                  className="border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition resize-none"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={savingProfile}
+                    className="bg-indigo-600 text-white text-sm px-5 py-2.5 rounded-xl hover:bg-indigo-500 transition-colors font-semibold shadow-sm disabled:opacity-50"
+                  >
+                    {savingProfile
+                      ? (lang === 'ja' ? '保存中…' : 'Saving…')
+                      : (lang === 'ja' ? '保存' : 'Save Profile')}
+                  </button>
+                  {profileSaved && (
+                    <span className="text-sm text-emerald-600 font-medium">
+                      {lang === 'ja' ? '保存しました ✓' : 'Saved ✓'}
+                    </span>
+                  )}
+                </div>
+              </form>
+            </div>
+          )}
+        </section>
 
         {/* Create new session */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
